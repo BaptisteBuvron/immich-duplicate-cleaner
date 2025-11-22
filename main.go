@@ -60,10 +60,10 @@ type Album struct {
 
 // Asset represents a media asset with its metadata
 type Asset struct {
-	ID               string    `json:"id"`
-	OriginalFileName string    `json:"originalFileName,omitempty"`
 	ExifInfo         *ExifInfo `json:"exifInfo,omitempty"`
 	FileCreatedAt    time.Time `json:"fileCreatedAt,omitempty"`
+	ID               string    `json:"id"`
+	OriginalFileName string    `json:"originalFileName,omitempty"`
 }
 
 // ExifInfo contains EXIF metadata for an asset
@@ -75,10 +75,10 @@ type ExifInfo struct {
 
 // AssetDetails represents detailed information about an asset
 type AssetDetails struct {
-	ID               string    `json:"id"`
-	OriginalFileName string    `json:"originalFileName"`
 	ExifInfo         *ExifInfo `json:"exifInfo"`
 	FileCreatedAt    time.Time `json:"fileCreatedAt"`
+	ID               string    `json:"id"`
+	OriginalFileName string    `json:"originalFileName"`
 }
 
 // AddAssetsRequest is the payload for adding assets to an album
