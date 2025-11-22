@@ -46,24 +46,24 @@ type DuplicateAsset struct {
 
 // DuplicateGroup represents a group of duplicate assets
 type DuplicateGroup struct {
-	Assets      []DuplicateAsset `json:"assets"`
 	DuplicateID string           `json:"duplicateId"`
+	Assets      []DuplicateAsset `json:"assets"`
 }
 
 // Album represents an Immich album
 type Album struct {
 	ID         string  `json:"id"`
 	AlbumName  string  `json:"albumName"`
-	AssetCount int     `json:"assetCount"`
 	Assets     []Asset `json:"assets,omitempty"`
+	AssetCount int     `json:"assetCount"`
 }
 
 // Asset represents a media asset with its metadata
 type Asset struct {
 	ID               string    `json:"id"`
 	OriginalFileName string    `json:"originalFileName,omitempty"`
-	FileCreatedAt    time.Time `json:"fileCreatedAt,omitempty"`
 	ExifInfo         *ExifInfo `json:"exifInfo,omitempty"`
+	FileCreatedAt    time.Time `json:"fileCreatedAt,omitempty"`
 }
 
 // ExifInfo contains EXIF metadata for an asset
@@ -77,8 +77,8 @@ type ExifInfo struct {
 type AssetDetails struct {
 	ID               string    `json:"id"`
 	OriginalFileName string    `json:"originalFileName"`
-	FileCreatedAt    time.Time `json:"fileCreatedAt"`
 	ExifInfo         *ExifInfo `json:"exifInfo"`
+	FileCreatedAt    time.Time `json:"fileCreatedAt"`
 }
 
 // AddAssetsRequest is the payload for adding assets to an album
@@ -354,7 +354,11 @@ func autoDeleteDuplicates(config *Config, group DuplicateGroup) error {
 	if !config.Yes && !config.DryRun {
 		fmt.Printf("\n⚠️  About to delete %d duplicate(s). Continue? [y/N]: ", len(assetsToDelete))
 		var response string
-		fmt.Scanln(&response)
+		if _, err := fmt.Scanln(&response); err != nil {
+			// User cancelled or error reading input
+			logInfo("❌ Deletion cancelled")
+			return nil
+		}
 		if !strings.EqualFold(response, "y") && !strings.EqualFold(response, "yes") {
 			logInfo("❌ Deletion cancelled by user")
 			return nil
@@ -438,10 +442,17 @@ func getDuplicates(config *Config) ([]DuplicateGroup, error) {
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			logError("Failed to close response body: %v", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("HTTP %d: failed to read response body: %w", resp.StatusCode, err)
+		}
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -469,10 +480,17 @@ func getAlbumsForAsset(config *Config, assetID string) ([]Album, error) {
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			logError("Failed to close response body: %v", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("HTTP %d: failed to read response body: %w", resp.StatusCode, err)
+		}
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -500,10 +518,17 @@ func getAssetDetails(config *Config, assetID string) (*AssetDetails, error) {
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			logError("Failed to close response body: %v", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("HTTP %d: failed to read response body: %w", resp.StatusCode, err)
+		}
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -538,10 +563,17 @@ func addAssetsToAlbum(config *Config, albumID string, assetIDs []string) error {
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			logError("Failed to close response body: %v", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return fmt.Errorf("HTTP %d: failed to read response body: %w", resp.StatusCode, err)
+		}
 		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -574,10 +606,17 @@ func deleteAsset(config *Config, assetID string) error {
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			logError("Failed to close response body: %v", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return fmt.Errorf("HTTP %d: failed to read response body: %w", resp.StatusCode, err)
+		}
 		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
 	}
 
