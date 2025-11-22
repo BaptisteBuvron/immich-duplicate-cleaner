@@ -1,0 +1,157 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # Trigger on version tags like v1.0.0, v1.0.1, etc.
+
+permissions:
+  contents: write  # Required to create releases and upload assets
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      version: ${{ steps.get_version.outputs.version }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Fetch all history for changelog generation
+    
+    - name: Get version from tag
+      id: get_version
+      run: echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+    
+    - name: Generate changelog
+      id: changelog
+      run: |
+        # Get commits since last tag
+        PREVIOUS_TAG=$(git describe --abbrev=0 --tags $(git rev-list --tags --skip=1 --max-count=1) 2>/dev/null || echo "")
+        if [ -z "$PREVIOUS_TAG" ]; then
+          CHANGELOG=$(git log --pretty=format:"- %s (%h)" --no-merges)
+        else
+          CHANGELOG=$(git log ${PREVIOUS_TAG}..HEAD --pretty=format:"- %s (%h)" --no-merges)
+        fi
+        echo "changelog<<EOF" >> $GITHUB_OUTPUT
+        echo "$CHANGELOG" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+    
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ steps.get_version.outputs.version }}
+        body: |
+          # Immich Duplicate Cleaner ${{ steps.get_version.outputs.version }}
+          
+          ## Changes
+          ${{ steps.changelog.outputs.changelog }}
+          
+          ## Installation
+          
+          Download the appropriate binary for your platform below and make it executable:
+          
+          **Linux:**
+          ```bash
+          chmod +x immich-duplicate-cleaner-linux-amd64
+          ./immich-duplicate-cleaner-linux-amd64 --help
+          ```
+          
+          **macOS:**
+          ```bash
+          chmod +x immich-duplicate-cleaner-darwin-amd64
+          ./immich-duplicate-cleaner-darwin-amd64 --help
+          ```
+          
+          **Windows:**
+          ```powershell
+          .\immich-duplicate-cleaner-windows-amd64.exe --help
+          ```
+          
+          ## What's Included
+          
+          - ✅ Album synchronization across duplicates
+          - ✅ Smart automatic deduplication
+          - ✅ Dry-run mode for safety
+          - ✅ Cross-platform support
+        draft: false
+        prerelease: false
+
+  build:
+    name: Build Binaries
+    needs: release
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          # Linux
+          - goos: linux
+            goarch: amd64
+            output: immich-duplicate-cleaner-linux-amd64
+          - goos: linux
+            goarch: arm64
+            output: immich-duplicate-cleaner-linux-arm64
+          
+          # macOS
+          - goos: darwin
+            goarch: amd64
+            output: immich-duplicate-cleaner-darwin-amd64
+          - goos: darwin
+            goarch: arm64
+            output: immich-duplicate-cleaner-darwin-arm64
+          
+          # Windows
+          - goos: windows
+            goarch: amd64
+            output: immich-duplicate-cleaner-windows-amd64.exe
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.23'
+    
+    - name: Build binary
+      env:
+        GOOS: ${{ matrix.goos }}
+        GOARCH: ${{ matrix.goarch }}
+        CGO_ENABLED: 0
+      run: |
+        go build -ldflags="-s -w -X main.version=${{ needs.release.outputs.version }}" -o ${{ matrix.output }} .
+        
+        # Create checksum
+        if [ "${{ matrix.goos }}" = "windows" ]; then
+          sha256sum ${{ matrix.output }} > ${{ matrix.output }}.sha256
+        else
+          sha256sum ${{ matrix.output }} > ${{ matrix.output }}.sha256
+        fi
+    
+    - name: Upload Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.release.outputs.upload_url }}
+        asset_path: ./${{ matrix.output }}
+        asset_name: ${{ matrix.output }}
+        asset_content_type: application/octet-stream
+    
+    - name: Upload Checksum
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.release.outputs.upload_url }}
+        asset_path: ./${{ matrix.output }}.sha256
+        asset_name: ${{ matrix.output }}.sha256
+        asset_content_type: text/plain
